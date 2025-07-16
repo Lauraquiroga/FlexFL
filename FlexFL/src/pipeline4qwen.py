@@ -1,14 +1,16 @@
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
 import json
 import os
 from function_call import get_code_snippet, get_paths, get_classes, get_methods, find_class, find_method
+import argparse
 
 # Construction of open-source model
 model_name = 'Qwen2'
 ######################### START
 
 # 1. Build
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
 device = "cuda"
 tokenizer = AutoTokenizer.from_pretrained("./Qwen2-7B-Instruct", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained("./Qwen2-7B-Instruct", trust_remote_code=True, torch_dtype="auto",device_map="auto")
@@ -26,14 +28,13 @@ def query(messages):
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
 ######################### END
-
-import argparse
+#From this point on it is the same as the pipeline.py file (for the llama3-8B-Instruct model)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='Defects4J', choices=['Defects4J', 'GHRB'])
     parser.add_argument('--input', default='All', choices=['bug_report', 'trigger_test', 'All'])
-    parser.add_argument('--stage', default='LR', choices=['SR', 'LR'])
+    parser.add_argument('--stage', default='LR', choices=['SR', 'LR']) ##### Note: Default here is LR stage
     parser.add_argument('--rank', default='All')
     args = parser.parse_args()
     dataset = args.dataset
@@ -52,6 +53,8 @@ if __name__ == "__main__":
     os.system(f'mkdir ../res/{output_dir}')
     
     for bug in bugs:
+        if bug != 'Time-25': # To run only for 1 bug: Time-25
+            continue
         print(bug)
         max_try = 10
         while max_try > 0:

@@ -1,22 +1,30 @@
+from typing import List, Optional #List: generic list type, Optional: A variable can be its type or None
+from llama import Dialog, Llama #in the llama folder inside Meta's llama3 repository, the script generation.py defines the class Llama (for inference) and Dialog (used to structure chat messages).
+import torch.distributed as dist
+
+import json
+import os
+from function_call import get_code_snippet, get_paths, get_classes, get_methods, find_class, find_method
+import argparse #command-line argument parsing (to pass flags)
+
 # Construction of open-source model
 model_name = 'Llama3'
 ######################### START
 
 # 1. Build
-from typing import List, Optional
-from llama import Dialog, Llama
-import torch.distributed as dist
+ckpt_dir: str = 'Meta-Llama-3-8B-Instruct/' #Path to the directory containing checkpoint files (LLaMA model weights).
+tokenizer_path: str = 'Meta-Llama-3-8B-Instruct/tokenizer.model' #Path to the tokenizer used to encode/decode text for the model.
+temperature: float = 0 #Makes the model deterministic
+top_p: float = 1.0 #Controls randomness. 1.0 means consider all tokens
 
-ckpt_dir: str = 'Meta-Llama-3-8B-Instruct/'
-tokenizer_path: str = 'Meta-Llama-3-8B-Instruct/tokenizer.model'
-temperature: float = 0
-top_p: float = 1.0
+# Note: for Repetition Strategy set temperature=0.6 and top_p=0.9
 
 seed = 42
-max_seq_len: int = 8192
-max_batch_size: int = 1
+max_seq_len: int = 8192 #Maximum sequence length for input text.
+max_batch_size: int = 1 #Maximum batch size for inference.
 max_gen_len: Optional[int] = None
 
+#Build a Llama instance by initializing and loading a pre-trained model.
 generator = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
@@ -27,6 +35,10 @@ generator = Llama.build(
 
 # 2. Inference
 def query(instruction):
+    """
+    Submits a chat-based prompt to the model and returns the output string
+    (main way the script interacts with the LLM)
+    """
     results = generator.chat_completion(
                         [instruction],
                         max_gen_len=max_gen_len,
@@ -40,11 +52,6 @@ def query(instruction):
 
 ######################### END
 
-import json
-import os
-from function_call import get_code_snippet, get_paths, get_classes, get_methods, find_class, find_method
-import argparse
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='Defects4J', choices=['Defects4J', 'GHRB'])
@@ -57,23 +64,30 @@ if __name__ == "__main__":
     stage = args.stage
     rank = args.rank
 
+    # Loads the list of bug IDs to be analyzed (e.g., Time-25)
     with open(f'../data/bug_list/{dataset}/bug_list.txt') as f:
         bugs = [e.strip() for e in f.readlines()]
 
+    # Creates output directory for Space Reduction stage
     if stage == 'SR':
         output_dir = f"{model_name}_{dataset}_SR" + ("_br" if input_type == 'bug_report' else "") + ("_tt" if input_type == 'trigger_test' else "")
-    else:
+    else: # Creates output directory for final results (Localization Refinement Stage)
         output_dir = f"{model_name}_{dataset}_{rank}"
     os.system(f'rm -rf ../res/{output_dir}')
     os.system(f'mkdir ../res/{output_dir}')
     
     for bug in bugs:
-        if bug != 'Time-25':
+        if bug != 'Time-25': # To run only for 1 bug: Time-25
             continue
         print(bug)
-        max_try = 10
+        max_try = 10 #Initial value of MAX as mentioned in paper
         while max_try > 0:
             try:
+                # Dynamic construction of the query:
+
+                ##FIRST: Depending on input type, set input_type_a, input_type_the and input_description vars
+
+                #1. In case there is a bug report: (Both input types or only bug reports)
                 input_description = ""
                 if (input_type == 'All' or input_type =='bug_report') and os.path.exists(f'../data/input/bug_reports/{dataset}/{bug}.json'):
                     input_type_a = "a bug report"
@@ -83,8 +97,10 @@ if __name__ == "__main__":
                             input_description += f"The bug report is as follows:\n```\nTitle:{bug_report['title']}\nDescription:{bug_report['description']}\n```\n"
                         else:
                             input_description += f"The bug report is as follows:\n```\nTitle:{bug_report['title']}\nDescription:{bug_report['description_text']}\n```\n"
-                else:
+                else: #If there are is bug report
                     input_type_a = None
+
+                #2. In case there are trigger tests: (Both input types or only trigger tests)
                 if (input_type == 'All' or input_type =='trigger_test') and os.path.exists(f'../data/input/trigger_tests/{dataset}/{bug}.txt'):
                     if input_type_a:
                         input_type_a += ", a trigger test"
@@ -93,7 +109,13 @@ if __name__ == "__main__":
                     with open(f'../data/input/trigger_tests/{dataset}/{bug}.txt') as f:
                         trigger_test = f.read()
                         input_description += f"The trigger test is as follows:\n```\n{trigger_test}\n```\n"
+
+
                 input_type_the = input_type_a.replace('a', 'the')
+
+                ##SECOND: Based on stage, set functions (defined in function_call.py) and update input_description
+
+                #3. If we are doing Space Reduction (Agent4SR) -> can use the following functions to explore the code
                 if stage == 'SR':
                     functions = "\nFunction calls you can use are as follows.\n\
 * find_class(`class_name`) -> Find a class in the bug report by fuzzy search. `class_name` -> The name of the class. *\n\
@@ -103,6 +125,9 @@ if __name__ == "__main__":
 * get_methods_of_class(`class_name`) -> Get the methods belonging to the class of the java software system. `class_name` -> The complete name of the class, for example `PathName.ClassName`. *\n\
 * get_code_snippet_of_method(`method_name`) -> Get the code snippet of the java method. `method_name` -> The complete name of the java method, for example `PathName.ClassName.MethodName(ArgType1,ArgType2)`. *\n\
 * exit() -> Exit function calling to give your final answer when you are confident of the answer. *\n"
+
+                #4. If we are doing Localization Refinement (Agent4LR) -> can only use get_code_snippet_of_method to explore candidates
+                # Uses suspicious method list to update the input description
                 else:
                     functions = "\nFunction calls you can use are as follows.\n\
 * get_code_snippet_of_method(`method_number`) -> Get the code snippet of the java method. `method_number` -> The number of the java methods suggested. *\n\
@@ -112,6 +137,8 @@ if __name__ == "__main__":
                         suspicious_methods_content =  '\n'.join([f"{j}.{suspicious_methods[j-1]}" for j in range(1,len(suspicious_methods)+1)])
                         
                     input_description += f"The suggested methods are as follows:\n```\n{suspicious_methods_content}\n```\n"
+
+                ##THIRD: Putting together the instruction
                 instruction = [
                     {
                         "role": "system",
@@ -127,12 +154,12 @@ Let's locate the faulty method step by step using reasoning and function calls. 
 Now reason and plan how to locate the buggy methods."
     }
                 ]
-                content = query(instruction)
+                content = query(instruction) #Instruction is submitted to llm and response is saved in content
                 instruction.append({
                     "role": "Assistant",
                     "content": content
                 })
-                for j in range(max_try):
+                for j in range(max_try): ##FOUTRH: Nested for ->Function calling
                     instruction.append({
                         "role": "user",
                         "content": f"Now call a function in this format `FunctionName(Argument)` in a single line without any other word."
@@ -142,8 +169,8 @@ Now reason and plan how to locate the buggy methods."
                         "role": "Assistant",
                         "content": content
                     })
-                    try:
-                        function_call = content.replace("'","").replace('"','')
+                    try: #Function calling using code from function_call.py (Table II paper)
+                        function_call = content.replace("'","").replace('"','') #remove quotation marks
                         function_name = function_call[:function_call.find('(')].strip()
                         arguments = function_call[function_call.find('(')+1:function_call.rfind(')')].strip().strip('`')
                         if function_name == 'get_paths':
@@ -188,7 +215,7 @@ Top_4 : PathName.ClassName.MethodName(ArgType1, ArgType2)\n\
 Top_5 : PathName.ClassName.MethodName(ArgType1, ArgType2)\n\
 "
         })
-                content = query(instruction)
+                content = query(instruction) #Instruction is submitted to llm and response is saved in content
                 instruction.append({
                         "role": "Assistant",
                         "content": content

@@ -1,6 +1,16 @@
 import Levenshtein
 
+"""
+Implements all the helper functions that the LLM can call during both SR (Space Reduction) and 
+LR (Localization Refinement) stages.
+Utility functions to search, retrieve, and format method/class/path information from bug program files.
+A way to simulate an "interactive code navigation" session for the LLM during multi-turn function-calling.
+"""
+
 def split4search(query):
+    """
+    Breaks method signatures down into searchable tokens.
+    """
     if '(' not in query:
         querys = query.split('.')
     else:
