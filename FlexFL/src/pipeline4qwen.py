@@ -1,5 +1,6 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import torch.distributed as dist
 
 import json
 import os
@@ -8,19 +9,23 @@ import argparse
 
 # Construction of open-source model
 model_name = 'Qwen2'
+model_path = './Qwen2-7B-Instruct'
 ######################### START
 
 # 1. Build
 device = "cuda"
-tokenizer = AutoTokenizer.from_pretrained("./Qwen2-7B-Instruct", trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained("./Qwen2-7B-Instruct", trust_remote_code=True, torch_dtype="auto",device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype="auto",device_map="auto")
 
 # 2. Inference
 def query(messages):
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    model_inputs = tokenizer([text], return_tensors="pt").to(device)
+    model_inputs = tokenizer([text], return_tensors="pt", padding=True)
+    input_ids = model_inputs["input_ids"].to(device)
+    attention_mask = model_inputs["attention_mask"].to(device)
     generated_ids = model.generate(
-        model_inputs.input_ids,
+        input_ids=input_ids,
+        attention_mask=attention_mask,
         max_length=8192,
         do_sample=False
     )   
@@ -49,12 +54,11 @@ if __name__ == "__main__":
         output_dir = f"{model_name}_{dataset}_SR" + ("_br" if input_type == 'bug_report' else "") + ("_tt" if input_type == 'trigger_test' else "")
     else:
         output_dir = f"{model_name}_{dataset}_{rank}"
-    os.system(f'rm -rf ../res/{output_dir}')
-    os.system(f'mkdir ../res/{output_dir}')
+        
+    #Just create the folder if it doesn't exist (no deletion)
+    os.makedirs(f'../res/{output_dir}', exist_ok=True)
     
     for bug in bugs:
-        if bug != 'Time-25': # To run only for 1 bug: Time-25
-            continue
         print(bug)
         max_try = 10
         while max_try > 0:
@@ -184,3 +188,6 @@ Top_5 : PathName.ClassName.MethodName(ArgType1, ArgType2)\n\
             except Exception as e:
                 print(e)
                 max_try -= 1
+
+    if dist.is_initialized():
+        dist.destroy_process_group()

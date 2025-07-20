@@ -73,8 +73,12 @@ if __name__ == "__main__":
         output_dir = f"{model_name}_{dataset}_SR" + ("_br" if input_type == 'bug_report' else "") + ("_tt" if input_type == 'trigger_test' else "")
     else: # Creates output directory for final results (Localization Refinement Stage)
         output_dir = f"{model_name}_{dataset}_{rank}"
-    os.system(f'rm -rf ../res/{output_dir}')
-    os.system(f'mkdir ../res/{output_dir}')
+
+    # os.system(f'rm -rf ../res/{output_dir}')
+    # os.system(f'mkdir ../res/{output_dir}')
+    
+    #Just create the folder if it doesn't exist (no deletion)
+    os.makedirs(f'../res/{output_dir}', exist_ok=True)
     
     for bug in bugs:
         if bug != 'Time-25': # To run only for 1 bug: Time-25
