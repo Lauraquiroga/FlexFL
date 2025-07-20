@@ -7,13 +7,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='Defects4J', choices=['Defects4J','GHRB'])
     parser.add_argument('--bug_list', default='All', choices=['All','AutoFL'])
-    parser.add_argument('--model', default='Llama3')
+    parser.add_argument('--model', default='Llama3') #choices=['Llama3', 'Qwen2', 'Mistral']
     parser.add_argument('--stage', default='LR', choices=['SR','LR'])
     parser.add_argument('--results_dir', default=None)
     args = parser.parse_args()
     dataset = args.dataset
     model = args.model
     stage = args.stage
+
     if args.results_dir:
         results_dir = args.results_dir
     elif stage == 'LR':
@@ -22,11 +23,12 @@ if __name__ == "__main__":
         results_dir = f'../res/{model}_{dataset}_SR'
 
     if args.bug_list == 'All':
-        with open(f'../data/bug_list/{dataset}/bug_list.txt') as f:
+        with open(f'../data/bug_list/{dataset}/bug_list.txt') as f: #to test a different list of bugs update file
             bugs = [e.strip() for e in f.readlines()]
     elif args.bug_list == 'AutoFL':
         with open(f'../data/bug_list/{dataset}/bug_list_AutoFL.txt') as f:
             bugs = [e.strip() for e in f.readlines()]
+
     with open(f'../data/input/ground_truth/{dataset}/gt.json') as f:
         gt = json.load(f)
 
