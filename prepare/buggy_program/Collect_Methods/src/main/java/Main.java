@@ -209,10 +209,16 @@ public class Main {
         String[] genArgs = {granularity, file_list, outputFolder, filePrefix};
         MainCorpusGenerator.main(genArgs);
 
-        outputFolder = "../methods_fixed_Defects4j/";
-        file_list = "../file_lists_fixed/"+filePrefix+".txt";
-        String[] genArgs_ = {granularity, file_list, outputFolder, filePrefix};
-        MainCorpusGenerator.main(genArgs_);
+        //Since we are given the ground truth, we can avoid generating the _fixed_ folders
+
+        // outputFolder = "../methods_fixed_Defects4j/";
+        // file_list = "../file_lists_fixed/"+filePrefix+".txt";
+        // String[] genArgs_ = {granularity, file_list, outputFolder, filePrefix};
+        // MainCorpusGenerator.main(genArgs_);
+
+
+
+
 //        BasicConfigurator.configure();
         // Properties props = new Properties();
         // String confFile = Objects.requireNonNull(Main.class.getClassLoader().getResource("log4j.properties")).getFile();
